@@ -2,17 +2,22 @@
   "name": "simon",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "npx tsc",
-    "start": "npx tsc && node dist/index.js"
+    "start": "npm run build && node dist/index.js",
+    "dev": "npx tsc --watch"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vosk": "^0.3.39",
+    "wavefile": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1"
   }
 }
