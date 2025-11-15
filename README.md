@@ -7,7 +7,7 @@ A Discord bot that provides real-time voice transcription using Vosk speech reco
 ## Prerequisites
 
 - Node.js (v16 or higher)
-- Vosk model files
+- [Vosk model files](https://alphacephei.com/vosk/models)
 
 ## How it Works
 
