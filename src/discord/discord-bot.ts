@@ -1,4 +1,5 @@
 import {
+  AudioPlayer,
   EndBehaviorType,
   joinVoiceChannel,
   VoiceConnection,
@@ -8,14 +9,23 @@ import { Client, GatewayIntentBits } from "discord.js";
 import { createOpusToVoskTransform } from "../audio";
 import { config } from "../config";
 import { VoskManager } from "../vosk";
-import { sendMessage } from "./commands";
+import { playMusic, sendMessage } from "./commands";
 
 export class DiscordBot {
   private client: Client;
   private voskManager: VoskManager;
+  private audioPlayer: AudioPlayer;
+  private currentConnection: VoiceConnection | null = null;
 
   constructor(voskManager: VoskManager) {
     this.voskManager = voskManager;
+    this.audioPlayer = new AudioPlayer();
+
+    // Add debug events for audio player
+    this.audioPlayer.on("error", (error) => {
+      console.error("❌ AudioPlayer error:", error);
+    });
+
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
@@ -68,9 +78,14 @@ export class DiscordBot {
       selfDeaf: false,
     });
 
+    this.currentConnection = connection;
+
     connection.on(VoiceConnectionStatus.Ready, () => {
       console.log("🔊 Connected to voice channel");
       this.setupVoiceRecognition(connection);
+
+      // Connect the audio player to the voice connection
+      connection.subscribe(this.audioPlayer);
     });
 
     connection.on(VoiceConnectionStatus.Disconnected, () => {
@@ -165,6 +180,9 @@ export class DiscordBot {
       ) {
         console.log("📝 Executing send message command");
         await sendMessage(guild, transcript);
+      } else if (lowercaseTranscript.includes("musique")) {
+        console.log("🎵 Executing play music command");
+        await playMusic(guild, transcript, this.audioPlayer);
       } else {
         console.log("❓ No matching voice command found");
       }
@@ -192,6 +210,10 @@ export class DiscordBot {
    */
   async stop(): Promise<void> {
     console.log("🛑 Stopping bot...");
+    this.audioPlayer.stop();
+    if (this.currentConnection) {
+      this.currentConnection.destroy();
+    }
     await this.client.destroy();
   }
 }
