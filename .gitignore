@@ -142,6 +142,3 @@ vite.config.ts.timestamp-*
 
 # Vosk
 vosk/models
-
-# Audio files
-audio

@@ -6,9 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "npx tsc",
-    "start": "npx tsc && node dist/index-discord-clean.js",
-    "start:legacy": "npm run build && node dist/index.js",
-    "start:discord": "npx tsc && node dist/index-discord-bot.js",
+    "start": "npx tsc && node dist/main.js",
     "dev": "npx tsc --watch"
   },
   "keywords": [],
