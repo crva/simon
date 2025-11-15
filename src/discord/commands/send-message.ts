@@ -2,7 +2,8 @@ import { Guild, TextChannel } from "discord.js";
 
 export async function sendMessage(
   guild: Guild,
-  transcript: string
+  transcript: string,
+  speakFn?: (text: string) => Promise<void>
 ): Promise<void> {
   try {
     // Extract message content (between quotes or after "message")
@@ -29,6 +30,10 @@ export async function sendMessage(
     console.log(
       `✅ Message sent to #${targetChannel.name}: "${messageContent}"`
     );
+
+    if (speakFn) {
+      await speakFn("c'est fait");
+    }
   } catch (error) {
     console.error(`❌ Failed to send message: ${error}`);
   }

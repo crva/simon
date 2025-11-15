@@ -19,6 +19,7 @@
     "discord.js": "^14.24.2",
     "dotenv": "^17.2.3",
     "fluent-ffmpeg": "^2.1.3",
+    "gtts": "^0.2.1",
     "node-record-lpcm16": "^1.0.1",
     "typescript": "^5.9.3",
     "vosk": "^0.3.39",

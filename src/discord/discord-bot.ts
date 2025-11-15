@@ -1,4 +1,6 @@
 import {
+  AudioPlayer,
+  createAudioResource,
   EndBehaviorType,
   joinVoiceChannel,
   VoiceConnection,
@@ -7,15 +9,21 @@ import {
 import { Client, GatewayIntentBits } from "discord.js";
 import { createOpusToVoskTransform } from "../audio";
 import { config } from "../config";
+import { TextToSpeech } from "../tts";
 import { VoskManager } from "../vosk";
 import { sendMessage } from "./commands";
 
 export class DiscordBot {
   private client: Client;
   private voskManager: VoskManager;
+  private tts: TextToSpeech;
+  private audioPlayer: AudioPlayer;
+  private currentConnection: VoiceConnection | null = null;
 
   constructor(voskManager: VoskManager) {
     this.voskManager = voskManager;
+    this.tts = new TextToSpeech();
+    this.audioPlayer = new AudioPlayer();
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
@@ -68,9 +76,13 @@ export class DiscordBot {
       selfDeaf: false,
     });
 
-    connection.on(VoiceConnectionStatus.Ready, () => {
+    this.currentConnection = connection;
+
+    connection.on(VoiceConnectionStatus.Ready, async () => {
       console.log("🔊 Connected to voice channel");
       this.setupVoiceRecognition(connection);
+
+      await this.speak("bonjour");
     });
 
     connection.on(VoiceConnectionStatus.Disconnected, () => {
@@ -164,12 +176,49 @@ export class DiscordBot {
         lowercaseTranscript.includes("envoi")
       ) {
         console.log("📝 Executing send message command");
-        await sendMessage(guild, transcript);
+        await sendMessage(guild, transcript, (text: string) =>
+          this.speak(text)
+        );
       } else {
         console.log("❓ No matching voice command found");
       }
     } catch (error) {
       console.error("❌ Error processing voice command:", error);
+    }
+  }
+
+  /**
+   * Fait parler le bot dans le canal vocal
+   */
+  async speak(text: string): Promise<void> {
+    try {
+      if (!this.currentConnection) {
+        console.log("❌ No voice connection available for speaking");
+        return;
+      }
+
+      console.log(`🗣️ Speaking: "${text}"`);
+
+      // Génère l'audio TTS
+      const audioPath = await this.tts.generateSpeech(text);
+
+      // Crée une ressource audio
+      const resource = createAudioResource(audioPath);
+
+      // Connecte l'audio player à la connexion vocale
+      this.currentConnection.subscribe(this.audioPlayer);
+
+      // Joue l'audio
+      this.audioPlayer.play(resource);
+
+      // Nettoie le fichier après lecture
+      this.audioPlayer.once("stateChange", (oldState, newState) => {
+        if (newState.status === "idle") {
+          this.tts.cleanup();
+        }
+      });
+    } catch (error) {
+      console.error("❌ Failed to speak:", error);
     }
   }
 
@@ -192,6 +241,11 @@ export class DiscordBot {
    */
   async stop(): Promise<void> {
     console.log("🛑 Stopping bot...");
+    this.tts.cleanup();
+    this.audioPlayer.stop();
+    if (this.currentConnection) {
+      this.currentConnection.destroy();
+    }
     await this.client.destroy();
   }
 }
