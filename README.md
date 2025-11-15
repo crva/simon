@@ -22,3 +22,7 @@ A Discord bot that provides real-time voice transcription using Vosk speech reco
 - Send a message
 
   🗣️ `simon, envoie "bonjour" dans #general`
+
+- Play a song
+
+  🗣️ `simon, musique, je suis malade serge lama`
