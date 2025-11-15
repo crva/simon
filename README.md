@@ -17,7 +17,7 @@ A Discord bot that provides real-time voice transcription using Vosk speech reco
 4. **Speech Recognition**: Uses Vosk to transcribe audio to text
 5. **Output**: Displays transcription results in console
 
-### Commands (⚠️ Since it's not AI it just tries to parse the sentences you say)
+## Commands (⚠️ Since it's not AI it just tries to parse the sentences you say)
 
 - Send a message
 
