@@ -8,6 +8,7 @@ import { Client, GatewayIntentBits } from "discord.js";
 import { createOpusToVoskTransform } from "../audio";
 import { config } from "../config";
 import { VoskManager } from "../vosk";
+import { sendMessage } from "./commands";
 
 export class DiscordBot {
   private client: Client;
@@ -84,7 +85,7 @@ export class DiscordBot {
     const receiver = connection.receiver;
 
     receiver.speaking.on("start", (userId) => {
-      console.log(`🎯 User ${userId} started speaking`);
+      // console.log(`🎯 User ${userId} started speaking`);
       this.handleUserSpeech(connection, userId);
     });
   }
@@ -116,11 +117,16 @@ export class DiscordBot {
           hasPartialResult = true;
         }
       })
-      .on("end", () => {
+      .on("end", async () => {
         const finalText = this.voskManager.getFinalResult(recognizer);
 
         if (finalText) {
           console.log("✅ Final transcription:", finalText);
+
+          // Process voice commands if transcript starts with "simon"
+          if (finalText.toLowerCase().startsWith("simon")) {
+            await this.processVoiceCommand(finalText, userId);
+          }
         } else if (!hasPartialResult) {
           console.log("❌ No speech detected");
         }
@@ -131,6 +137,40 @@ export class DiscordBot {
         console.error("Audio stream error:", error);
         recognizer.free();
       });
+  }
+
+  /**
+   * Process voice command starting with "simon"
+   */
+  private async processVoiceCommand(
+    transcript: string,
+    userId: string
+  ): Promise<void> {
+    const lowercaseTranscript = transcript.toLowerCase();
+
+    console.log(`🎯 Processing voice command: "${transcript}"`);
+
+    try {
+      // Get guild for command execution
+      const guild = this.client.guilds.cache.get(config.discord.guildId);
+      if (!guild) {
+        console.log("❌ Guild not found for command execution");
+        return;
+      }
+
+      // Command switch
+      if (
+        lowercaseTranscript.includes("envoie") ||
+        lowercaseTranscript.includes("envoi")
+      ) {
+        console.log("📝 Executing send message command");
+        await sendMessage(guild, transcript);
+      } else {
+        console.log("❓ No matching voice command found");
+      }
+    } catch (error) {
+      console.error("❌ Error processing voice command:", error);
+    }
   }
 
   /**

@@ -2,6 +2,8 @@
 
 A Discord bot that provides real-time voice transcription using Vosk speech recognition.
 
+⚠️ Only understand French ATM
+
 ## Prerequisites
 
 - Node.js (v16 or higher)
@@ -14,3 +16,9 @@ A Discord bot that provides real-time voice transcription using Vosk speech reco
 3. **Format Conversion**: Downsamples from 48kHz stereo to 16kHz mono
 4. **Speech Recognition**: Uses Vosk to transcribe audio to text
 5. **Output**: Displays transcription results in console
+
+### Commands (⚠️ Since it's not AI it just tries to parse the sentences you say)
+
+- Send a message
+
+  🗣️ `simon, envoie "bonjour" dans #general`
