@@ -26,3 +26,7 @@ A Discord bot that provides real-time voice transcription using Vosk speech reco
 - Play a song
 
   🗣️ `simon, musique, je suis malade serge lama`
+
+- Stop a song
+
+  🗣️ `simon, stop`

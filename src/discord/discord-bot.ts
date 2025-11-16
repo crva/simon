@@ -183,6 +183,10 @@ export class DiscordBot {
       } else if (lowercaseTranscript.includes("musique")) {
         console.log("🎵 Executing play music command");
         await playMusic(guild, transcript, this.audioPlayer);
+      } else if (lowercaseTranscript.includes("stop")) {
+        console.log("🛑 Executing stop music command");
+        this.audioPlayer.stop();
+        console.log("✅ Music stopped");
       } else {
         console.log("❓ No matching voice command found");
       }
