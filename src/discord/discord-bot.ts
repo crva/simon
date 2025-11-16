@@ -6,7 +6,7 @@ import {
   VoiceConnectionStatus,
 } from "@discordjs/voice";
 import { Client, GatewayIntentBits } from "discord.js";
-import { createOpusToVoskTransform } from "../audio";
+import { cleanupAllMusic, createOpusToVoskTransform } from "../audio";
 import { config } from "../config";
 import { VoskManager } from "../vosk";
 import { playMusic, sendMessage } from "./commands";
@@ -246,6 +246,7 @@ export class DiscordBot {
   async stop(): Promise<void> {
     console.log("🛑 Stopping bot...");
     this.audioPlayer.stop();
+    cleanupAllMusic();
     if (this.currentConnection) {
       this.currentConnection.destroy();
     }

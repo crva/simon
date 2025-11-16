@@ -55,3 +55,19 @@ export function cleanupFile(filePath: string) {
     });
   }
 }
+
+export function cleanupAllMusic() {
+  if (!fs.existsSync(MUSIC_DIR)) {
+    return;
+  }
+
+  const files = fs.readdirSync(MUSIC_DIR);
+  const musicFiles = files.filter((file) => file.endsWith(".mp3"));
+
+  console.log(`🗑️ Cleaning up ${musicFiles.length} music files...`);
+
+  musicFiles.forEach((file) => {
+    const filePath = path.join(MUSIC_DIR, file);
+    cleanupFile(filePath);
+  });
+}
