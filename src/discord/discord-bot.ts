@@ -16,6 +16,7 @@ export class DiscordBot {
   private voskManager: VoskManager;
   private audioPlayer: AudioPlayer;
   private currentConnection: VoiceConnection | null = null;
+  private isProcessingVoice: boolean = false;
 
   constructor(voskManager: VoskManager) {
     this.voskManager = voskManager;
@@ -106,9 +107,32 @@ export class DiscordBot {
   }
 
   /**
+   * Lock voice processing to prevent concurrent operations
+   */
+  private lockVoiceProcessing(): boolean {
+    if (this.isProcessingVoice) {
+      return false; // Already locked
+    }
+    this.isProcessingVoice = true;
+    return true; // Successfully locked
+  }
+
+  /**
+   * Unlock voice processing
+   */
+  private unlockVoiceProcessing(): void {
+    this.isProcessingVoice = false;
+  }
+
+  /**
    * Handle speech recognition for a specific user
    */
   private handleUserSpeech(connection: VoiceConnection, userId: string): void {
+    // Avoid concurrent processing
+    if (!this.lockVoiceProcessing()) {
+      return;
+    }
+
     const recognizer = this.voskManager.createRecognizer();
     const audioStream = connection.receiver.subscribe(userId, {
       end: {
@@ -147,10 +171,12 @@ export class DiscordBot {
         }
 
         recognizer.free();
+        this.unlockVoiceProcessing();
       })
       .on("error", (error) => {
         console.error("Audio stream error:", error);
         recognizer.free();
+        this.unlockVoiceProcessing();
       });
   }
 
@@ -182,6 +208,11 @@ export class DiscordBot {
         await sendMessage(guild, transcript);
       } else if (lowercaseTranscript.includes("musique")) {
         console.log("🎵 Executing play music command");
+        // Stop current music if playing to play new one
+        if (this.audioPlayer.state.status === "playing") {
+          console.log("🛑 Stopping current music to play new one");
+          this.audioPlayer.stop();
+        }
         await playMusic(guild, transcript, this.audioPlayer);
       } else if (lowercaseTranscript.includes("stop")) {
         console.log("🛑 Executing stop music command");
