@@ -8,6 +8,7 @@ import {
 import { Client, GatewayIntentBits } from "discord.js";
 import { cleanupAllMusic, createOpusToVoskTransform } from "../audio";
 import { config } from "../config";
+import { logger } from "../utils";
 import { VoskManager } from "../vosk";
 import { playMusic, sendMessage } from "./commands";
 
@@ -24,7 +25,7 @@ export class DiscordBot {
 
     // Add debug events for audio player
     this.audioPlayer.on("error", (error) => {
-      console.error("❌ AudioPlayer error:", error);
+      logger.error({ error }, "❌ AudioPlayer error");
     });
 
     this.client = new Client({
@@ -43,18 +44,18 @@ export class DiscordBot {
    */
   private setupEventHandlers(): void {
     this.client.on("clientReady", async () => {
-      console.log(`🤖 Bot logged in as ${this.client.user?.tag}`);
+      logger.info(`🤖 Bot logged in as ${this.client.user?.tag}`);
 
       try {
         await this.initializeVoiceConnection();
       } catch (error) {
-        console.error("Initialization error:", error);
+        logger.error({ error }, "Initialization error");
         process.exit(1);
       }
     });
 
     this.client.on("error", (error) => {
-      console.error("Discord client error:", error);
+      logger.error({ error }, "Discord client error");
     });
   }
 
@@ -82,7 +83,7 @@ export class DiscordBot {
     this.currentConnection = connection;
 
     connection.on(VoiceConnectionStatus.Ready, () => {
-      console.log("🔊 Connected to voice channel");
+      logger.info("🔊 Connected to voice channel");
       this.setupVoiceRecognition(connection);
 
       // Connect the audio player to the voice connection
@@ -90,7 +91,7 @@ export class DiscordBot {
     });
 
     connection.on(VoiceConnectionStatus.Disconnected, () => {
-      console.log("❌ Disconnected from voice channel");
+      logger.info("❌ Disconnected from voice channel");
     });
   }
 
@@ -101,7 +102,17 @@ export class DiscordBot {
     const receiver = connection.receiver;
 
     receiver.speaking.on("start", (userId) => {
-      // console.log(`🎯 User ${userId} started speaking`);
+      // Ignore bot users
+      const user = this.client.users.cache.get(userId);
+      if (user?.bot) {
+        logger.debug(`🤖 Ignoring bot user: ${user.username}`);
+        return;
+      }
+
+      logger.debug(
+        { isProcessingVoice: this.isProcessingVoice },
+        `🎯 User ${userId} started speaking`
+      );
       this.handleUserSpeech(connection, userId);
     });
   }
@@ -152,7 +163,7 @@ export class DiscordBot {
           chunk
         );
         if (partialText) {
-          console.log("🎤 Partial:", partialText);
+          logger.debug(`🎤 Partial: ${partialText}`);
           hasPartialResult = true;
         }
       })
@@ -160,21 +171,21 @@ export class DiscordBot {
         const finalText = this.voskManager.getFinalResult(recognizer);
 
         if (finalText) {
-          console.log("✅ Final transcription:", finalText);
+          logger.info(`✅ Final transcription: ${finalText}`);
 
           // Process voice commands if transcript starts with "simon"
           if (finalText.toLowerCase().startsWith("simon")) {
             await this.processVoiceCommand(finalText, userId);
           }
         } else if (!hasPartialResult) {
-          console.log("❌ No speech detected");
+          logger.debug("❌ No speech detected");
         }
 
         recognizer.free();
         this.unlockVoiceProcessing();
       })
       .on("error", (error) => {
-        console.error("Audio stream error:", error);
+        logger.error({ error }, "Audio stream error");
         recognizer.free();
         this.unlockVoiceProcessing();
       });
@@ -189,13 +200,13 @@ export class DiscordBot {
   ): Promise<void> {
     const lowercaseTranscript = transcript.toLowerCase();
 
-    console.log(`🎯 Processing voice command: "${transcript}"`);
+    logger.info(`🎯 Processing voice command: ${transcript}`);
 
     try {
       // Get guild for command execution
       const guild = this.client.guilds.cache.get(config.discord.guildId);
       if (!guild) {
-        console.log("❌ Guild not found for command execution");
+        logger.error("❌ Guild not found for command execution");
         return;
       }
 
@@ -204,25 +215,25 @@ export class DiscordBot {
         lowercaseTranscript.includes("envoie") ||
         lowercaseTranscript.includes("envoi")
       ) {
-        console.log("📝 Executing send message command");
+        logger.info("📝 Executing send message command");
         await sendMessage(guild, transcript);
       } else if (lowercaseTranscript.includes("musique")) {
-        console.log("🎵 Executing play music command");
+        logger.info("🎵 Executing play music command");
         // Stop current music if playing to play new one
         if (this.audioPlayer.state.status === "playing") {
-          console.log("🛑 Stopping current music to play new one");
+          logger.info("🛑 Stopping current music to play new one");
           this.audioPlayer.stop();
         }
         await playMusic(guild, transcript, this.audioPlayer);
       } else if (lowercaseTranscript.includes("stop")) {
-        console.log("🛑 Executing stop music command");
+        logger.info("🛑 Executing stop music command");
         this.audioPlayer.stop();
-        console.log("✅ Music stopped");
+        logger.info("✅ Music stopped");
       } else {
-        console.log("❓ No matching voice command found");
+        logger.debug("❓ No matching voice command found");
       }
     } catch (error) {
-      console.error("❌ Error processing voice command:", error);
+      logger.error({ error }, "❌ Error processing voice command");
     }
   }
 
@@ -230,12 +241,12 @@ export class DiscordBot {
    * Start the Discord bot
    */
   async start(): Promise<void> {
-    console.log("🚀 Starting Discord voice transcription bot...");
+    logger.info("🚀 Starting Discord voice transcription bot...");
 
     try {
       await this.client.login(config.discord.token);
     } catch (error) {
-      console.error("Login failed:", error);
+      logger.error({ error }, "Login failed");
       throw error;
     }
   }
@@ -244,7 +255,7 @@ export class DiscordBot {
    * Stop the bot and cleanup resources
    */
   async stop(): Promise<void> {
-    console.log("🛑 Stopping bot...");
+    logger.info("🛑 Stopping bot...");
     this.audioPlayer.stop();
     cleanupAllMusic();
     if (this.currentConnection) {

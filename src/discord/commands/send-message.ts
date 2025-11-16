@@ -1,4 +1,5 @@
 import { Guild, TextChannel } from "discord.js";
+import { logger } from "../../utils";
 
 export async function sendMessage(
   guild: Guild,
@@ -9,7 +10,7 @@ export async function sendMessage(
     let messageContent = extractMessageContent(transcript);
 
     if (!messageContent) {
-      console.log("❌ No message content found");
+      logger.warn("❌ No message content found");
       return;
     }
 
@@ -20,17 +21,15 @@ export async function sendMessage(
     const targetChannel = findTextChannel(guild, channelName);
 
     if (!targetChannel) {
-      console.log(`❌ Channel "${channelName}" not found`);
+      logger.warn(`❌ Channel ${channelName} not found`);
       return;
     }
 
     // Send the message
     await targetChannel.send(messageContent);
-    console.log(
-      `✅ Message sent to #${targetChannel.name}: "${messageContent}"`
-    );
+    logger.info(`✅ Message sent to #${targetChannel.name}: ${messageContent}`);
   } catch (error) {
-    console.error(`❌ Failed to send message: ${error}`);
+    logger.error({ error }, "❌ Failed to send message");
   }
 }
 

@@ -1,4 +1,5 @@
 import { DiscordBot } from "./discord";
+import { logger } from "./utils";
 import { VoskManager } from "./vosk";
 
 async function main(): Promise<void> {
@@ -17,7 +18,7 @@ async function main(): Promise<void> {
 
     // Graceful shutdown handling
     process.on("SIGINT", async () => {
-      console.log("\n🔄 Graceful shutdown initiated...");
+      logger.info("\n🔄 Graceful shutdown initiated...");
 
       try {
         if (discordBot) {
@@ -26,15 +27,15 @@ async function main(): Promise<void> {
         if (voskManager) {
           voskManager.destroy();
         }
-        console.log("✅ Cleanup completed");
+        logger.info("✅ Cleanup completed");
         process.exit(0);
       } catch (error) {
-        console.error("❌ Error during shutdown:", error);
+        logger.error({ error }, "❌ Error during shutdown");
         process.exit(1);
       }
     });
   } catch (error) {
-    console.error("❌ Failed to start application:", error);
+    logger.error({ error }, "❌ Failed to start application");
 
     // Cleanup if initialization failed
     if (voskManager) {
@@ -47,6 +48,6 @@ async function main(): Promise<void> {
 
 // Start the application
 main().catch((error) => {
-  console.error("❌ Unhandled error:", error);
+  logger.error({ error }, "❌ Unhandled error");
   process.exit(1);
 });

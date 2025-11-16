@@ -1,6 +1,7 @@
 import * as opus from "@discordjs/opus";
 import { Transform } from "stream";
 import { config } from "../config";
+import { logger } from "../utils";
 
 /**
  * Converts audio from 48kHz stereo to 16kHz mono format
@@ -65,7 +66,7 @@ export function createOpusToVoskTransform(): Transform {
 
         callback();
       } catch (error) {
-        console.error("Audio transform error:", error);
+        logger.error({ error }, "Audio transform error");
         callback();
       }
     },

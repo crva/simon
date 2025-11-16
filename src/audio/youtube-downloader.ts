@@ -2,6 +2,7 @@ import { createAudioResource } from "@discordjs/voice";
 import * as fs from "fs";
 import * as path from "path";
 import youtubeDl from "youtube-dl-exec";
+import { logger } from "../utils";
 
 const MUSIC_DIR = path.join(__dirname, "../../music");
 
@@ -51,7 +52,7 @@ export function createMusicResource(filePath: string, title: string) {
 export function cleanupFile(filePath: string) {
   if (fs.existsSync(filePath)) {
     fs.unlink(filePath, (err) => {
-      if (err) console.error("Cleanup error:", err);
+      if (err) logger.error({ error: err }, "Cleanup error");
     });
   }
 }
@@ -64,7 +65,7 @@ export function cleanupAllMusic() {
   const files = fs.readdirSync(MUSIC_DIR);
   const musicFiles = files.filter((file) => file.endsWith(".mp3"));
 
-  console.log(`🗑️ Cleaning up ${musicFiles.length} music files...`);
+  logger.info(`🗑️ Cleaning up ${musicFiles.length} music files...`);
 
   musicFiles.forEach((file) => {
     const filePath = path.join(MUSIC_DIR, file);

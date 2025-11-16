@@ -1,5 +1,6 @@
 import * as vosk from "vosk";
 import { config } from "../config";
+import { logger } from "../utils";
 
 export class VoskManager {
   private model: vosk.Model;
@@ -8,9 +9,9 @@ export class VoskManager {
     try {
       vosk.setLogLevel(-1);
       this.model = new vosk.Model(config.vosk.modelPath);
-      console.log("✅ Vosk model loaded successfully");
+      logger.info("✅ Vosk model loaded successfully");
     } catch (error) {
-      console.error("❌ Failed to load Vosk model:", error);
+      logger.error({ error }, "❌ Failed to load Vosk model");
       throw error;
     }
   }
@@ -40,7 +41,7 @@ export class VoskManager {
       }
       return null;
     } catch (error) {
-      console.error("Audio processing error:", error);
+      logger.error({ error }, "Audio processing error");
       return null;
     }
   }
@@ -53,7 +54,7 @@ export class VoskManager {
       const finalResult = recognizer.finalResult();
       return finalResult.text?.trim() || null;
     } catch (error) {
-      console.error("Final result error:", error);
+      logger.error({ error }, "Final result error");
       return null;
     }
   }
