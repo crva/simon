@@ -140,7 +140,8 @@ vite.config.ts.timestamp-*
 .vite/
 
 # Vosk
-vosk/models
+vosk/models/*
+!vosk/models/README.md
 
 # Music Downloads
 music/*
