@@ -36,21 +36,39 @@ function ordinal(position: number): string {
   }
 }
 
+function getNotificationChannel(guild: Guild) {
+  if (!config.music.notificationChannelId) return null;
+  const channel = guild.channels.cache.get(config.music.notificationChannelId);
+  if (!channel?.isTextBased()) {
+    logger.warn("⚠️ Music notification channel not found or not text-based");
+    return null;
+  }
+  return channel;
+}
+
+async function resolveRequesterFooter(guild: Guild, userId: string) {
+  try {
+    const member =
+      guild.members.cache.get(userId) ?? (await guild.members.fetch(userId));
+    return {
+      text: `Requested by ${member.displayName}`,
+      iconURL: member.displayAvatarURL(),
+    };
+  } catch {
+    return { text: "Requested by unknown user" };
+  }
+}
+
 export async function sendMusicEmbed(
   guild: Guild,
   track: Track,
   status: "playing" | "queued",
   options: { upcomingPosition?: number; estimatedWaitSeconds?: number } = {}
 ): Promise<void> {
-  if (!config.music.notificationChannelId) return;
+  const channel = getNotificationChannel(guild);
+  if (!channel) return;
 
   try {
-    const channel = guild.channels.cache.get(config.music.notificationChannelId);
-    if (!channel?.isTextBased()) {
-      logger.warn("⚠️ Music notification channel not found or not text-based");
-      return;
-    }
-
     const linkText = track.author ? `${track.title} by ${track.author}` : track.title;
 
     const embed = new EmbedBuilder()
@@ -95,21 +113,41 @@ export async function sendMusicEmbed(
     }
 
     if (track.requestedBy) {
-      try {
-        const member =
-          guild.members.cache.get(track.requestedBy) ??
-          (await guild.members.fetch(track.requestedBy));
-        embed.setFooter({
-          text: `Requested by ${member.displayName}`,
-          iconURL: member.displayAvatarURL(),
-        });
-      } catch {
-        embed.setFooter({ text: "Requested by unknown user" });
-      }
+      embed.setFooter(await resolveRequesterFooter(guild, track.requestedBy));
     }
 
     await channel.send({ embeds: [embed] });
   } catch (error) {
     logger.error({ error }, "❌ Failed to send music embed");
+  }
+}
+
+const COMMAND_EMOJIS = {
+  skip: "⏭️",
+  pause: "⏸️",
+  resume: "▶️",
+  stop: "⏹️",
+} as const;
+
+export async function sendCommandEmbed(
+  guild: Guild,
+  command: keyof typeof COMMAND_EMOJIS,
+  userId?: string
+): Promise<void> {
+  const channel = getNotificationChannel(guild);
+  if (!channel) return;
+
+  try {
+    const embed = new EmbedBuilder()
+      .setDescription(COMMAND_EMOJIS[command])
+      .setColor(0x99aab5);
+
+    if (userId) {
+      embed.setFooter(await resolveRequesterFooter(guild, userId));
+    }
+
+    await channel.send({ embeds: [embed] });
+  } catch (error) {
+    logger.error({ error }, "❌ Failed to send command embed");
   }
 }
