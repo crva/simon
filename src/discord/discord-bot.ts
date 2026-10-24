@@ -79,13 +79,13 @@ export class DiscordBot {
       try {
         await this.initializeVoiceConnection();
       } catch (error) {
-        logger.error({ error }, "Initialization error");
+        logger.error({ error }, "❌ Initialization error");
         process.exit(1);
       }
     });
 
     this.client.on("error", (error) => {
-      logger.error({ error }, "Discord client error");
+      logger.error({ error }, "❌ Discord client error");
     });
   }
 
@@ -243,7 +243,7 @@ export class DiscordBot {
         this.activeSpeakers.delete(userId);
       })
       .on("error", async (error) => {
-        logger.error({ error }, "Audio stream error");
+        logger.error({ error }, "❌ Audio stream error");
         await processingQueue;
         recognizer.free();
         englishRecognizer.free();
@@ -274,10 +274,7 @@ export class DiscordBot {
   ): Promise<void> {
     const lowercaseTranscript = transcript.toLowerCase();
 
-    logger.info(`🎯 Processing voice command: ${transcript}`);
-
     try {
-      // Get guild for command execution
       const guild = this.client.guilds.cache.get(config.discord.guildId);
       if (!guild) {
         logger.error("❌ Guild not found for command execution");
@@ -289,21 +286,19 @@ export class DiscordBot {
         lowercaseTranscript.includes("envoie") ||
         lowercaseTranscript.includes("envoi")
       ) {
-        logger.info("📝 Executing send message command");
         await sendMessage(guild, transcript);
       } else if (lowercaseTranscript.includes("stop")) {
-        logger.info("🛑 Executing stop music command");
         this.musicQueue.clear();
         this.audioPlayer.stop();
         stopCurrentStream();
-        logger.info("✅ Music stopped and queue cleared");
+        logger.info("🛑 Music stopped and queue cleared");
       } else if (SKIP_VARIANTS.some((v) => lowercaseTranscript.includes(v))) {
         if (this.audioPlayer.state.status === "idle") {
           logger.info("⏭️ Nothing playing to skip");
         } else {
-          logger.info("⏭️ Skipping current track");
           this.audioPlayer.stop();
           stopCurrentStream();
+          logger.info("⏭️ Skipped current track");
         }
       } else if (PAUSE_VARIANTS.some((v) => lowercaseTranscript.includes(v))) {
         if (this.audioPlayer.pause()) {
@@ -318,7 +313,6 @@ export class DiscordBot {
         if (!track) return;
 
         if (this.audioPlayer.state.status === "idle") {
-          logger.info("🎵 Executing play music command");
           this.playTrack(track);
         } else {
           this.musicQueue.enqueue(track);
@@ -343,7 +337,7 @@ export class DiscordBot {
     try {
       await this.client.login(config.discord.token);
     } catch (error) {
-      logger.error({ error }, "Login failed");
+      logger.error({ error }, "❌ Login failed");
       throw error;
     }
   }

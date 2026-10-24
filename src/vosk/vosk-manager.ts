@@ -54,7 +54,7 @@ export class VoskManager {
       }
       return null;
     } catch (error) {
-      logger.error({ error }, "Audio processing error");
+      logger.error({ error }, "❌ Audio processing error");
       return null;
     }
   }
@@ -68,7 +68,7 @@ export class VoskManager {
       const partial = JSON.parse(await recognizer.partialResult());
       return partial.partial?.trim() || null;
     } catch (error) {
-      logger.error({ error }, "Partial result error");
+      logger.error({ error }, "❌ Partial result error");
       return null;
     }
   }
@@ -81,7 +81,7 @@ export class VoskManager {
       const finalResult = JSON.parse(await recognizer.finalResult());
       return finalResult.text?.trim() || null;
     } catch (error) {
-      logger.error({ error }, "Final result error");
+      logger.error({ error }, "❌ Final result error");
       return null;
     }
   }

@@ -69,7 +69,7 @@ export function createOpusToVoskTransform(): Transform {
 
         callback();
       } catch (error) {
-        logger.error({ error }, "Audio transform error");
+        logger.error({ error }, "❌ Audio transform error");
         callback();
       }
     },

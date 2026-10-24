@@ -35,17 +35,12 @@ async function main(): Promise<void> {
   });
 
   try {
-    // Initialize Vosk
     voskManager = new VoskManager();
-
-    // Initialize Discord bot
     discordBot = new DiscordBot(voskManager);
-
-    // Start the bot
     await discordBot.start();
 
     process.on("SIGINT", () => {
-      logger.info("\n🔄 Graceful shutdown initiated...");
+      logger.info("🔄 Graceful shutdown initiated...");
       void shutdown(0);
     });
   } catch (error) {
@@ -54,7 +49,6 @@ async function main(): Promise<void> {
   }
 }
 
-// Start the application
 main().catch((error) => {
   logger.error({ error }, "❌ Unhandled error");
   process.exit(1);
