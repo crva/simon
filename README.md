@@ -29,6 +29,7 @@ A Discord bot that listens to a voice channel and transcribes speech in real tim
 | `SAMPLE_RATE` | no (default `16000`) | Vosk sample rate |
 | `CHUNK_SIZE` | no (default `4000`) | PCM chunk size (bytes) fed to Vosk |
 | `MUSIC_CACHE_ENABLED` | no (default `false`) | Cache downloaded/streamed tracks to disk under `music/`, keyed by video ID |
+| `MUSIC_NOTIFICATION_CHANNEL_ID` | no | Text channel ID where music/command embeds are posted. Leave empty to disable |
 | `NODE_ENV` | no | `development` enables pretty console logs |
 | `LOG_LEVEL` | no (default `info`) | pino log level |
 
@@ -56,3 +57,10 @@ Say the wake word first, e.g. `"simon, musique, one more time daft punk"`.
 Music is streamed directly (no full download before playing); with `MUSIC_CACHE_ENABLED=true`, each track is also saved to `music/` so repeat requests skip straight to the cached file.
 
 This is pattern matching on keywords, not an LLM — phrasing matters.
+
+## Notifications
+
+If `MUSIC_NOTIFICATION_CHANNEL_ID` is set, the bot posts an embed to that channel for each music event:
+
+- **`musique`**: a "Now Playing" or "Added Track" embed with the track's title/thumbnail/link, requester, and (if queued) the estimated wait time and position in queue.
+- **`skip` / `pause` / `resume` / `stop`**: a short confirmation embed naming the action and the affected track, e.g. "⏭️ Skipped [Title by Author](url)".
