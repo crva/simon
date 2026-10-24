@@ -77,7 +77,13 @@ export async function resolveTrack(
     `🎵 Found: ${video.title} by ${video.author.name} (matched query: "${best.query}")`
   );
 
-  return { url: video.url, title: video.title };
+  return {
+    url: video.url,
+    title: video.title,
+    ...(video.thumbnail ? { thumbnail: video.thumbnail } : {}),
+    author: video.author.name,
+    duration: video.timestamp,
+  };
 }
 
 function extractMusicQuery(text: string): string | null {

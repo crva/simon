@@ -16,6 +16,7 @@ export interface AppConfig {
   };
   music: {
     cacheEnabled: boolean;
+    notificationChannelId: string;
   };
 }
 
@@ -55,5 +56,6 @@ export const config: AppConfig = {
   },
   music: {
     cacheEnabled: process.env.MUSIC_CACHE_ENABLED === "true",
+    notificationChannelId: process.env.MUSIC_NOTIFICATION_CHANNEL_ID || "",
   },
 };

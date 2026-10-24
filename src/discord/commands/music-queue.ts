@@ -1,6 +1,10 @@
 export interface Track {
   url: string;
   title: string;
+  thumbnail?: string;
+  author?: string;
+  duration?: string;
+  requestedBy?: string;
 }
 
 export class MusicQueue {
@@ -20,5 +24,9 @@ export class MusicQueue {
 
   get size(): number {
     return this.tracks.length;
+  }
+
+  getPending(): readonly Track[] {
+    return this.tracks;
   }
 }

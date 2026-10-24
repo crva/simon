@@ -14,8 +14,10 @@ import { VoskManager } from "../vosk";
 import {
   MUSIC_VARIANTS,
   MusicQueue,
+  parseDuration,
   resolveTrack,
   sendMessage,
+  sendMusicEmbed,
   Track,
 } from "./commands";
 
@@ -38,6 +40,7 @@ export class DiscordBot {
   private currentConnection: VoiceConnection | null = null;
   private activeSpeakers: Set<string> = new Set();
   private musicQueue: MusicQueue = new MusicQueue();
+  private currentTrack: Track | null = null;
 
   constructor(voskManager: VoskManager) {
     this.voskManager = voskManager;
@@ -258,10 +261,25 @@ export class DiscordBot {
     try {
       const resource = streamMusic(track.url, track.title);
       this.audioPlayer.play(resource);
+      this.currentTrack = track;
       logger.info(`🎵 Playing: ${track.title}`);
     } catch (error) {
       logger.error({ error }, "❌ Playback failed");
     }
+  }
+
+  /**
+   * Seconds left in the currently playing track, used to estimate wait
+   * times for newly queued tracks
+   */
+  private getCurrentTrackRemainingSeconds(): number {
+    if (!this.currentTrack?.duration) return 0;
+    const state = this.audioPlayer.state;
+    if (state.status === "idle") return 0;
+
+    const elapsedSeconds = state.resource.playbackDuration / 1000;
+    const totalSeconds = parseDuration(this.currentTrack.duration);
+    return Math.max(0, totalSeconds - elapsedSeconds);
   }
 
   /**
@@ -311,14 +329,28 @@ export class DiscordBot {
       } else if (MUSIC_VARIANTS.some((v) => lowercaseTranscript.includes(v))) {
         const track = await resolveTrack(transcript, englishTranscript);
         if (!track) return;
+        track.requestedBy = userId;
 
         if (this.audioPlayer.state.status === "idle") {
           this.playTrack(track);
+          await sendMusicEmbed(guild, track, "playing");
         } else {
           this.musicQueue.enqueue(track);
-          logger.info(
-            `➕ Added to queue: ${track.title} (position ${this.musicQueue.size})`
-          );
+          const pending = this.musicQueue.getPending();
+          const upcomingPosition = pending.length;
+          const tracksAhead = pending.slice(0, -1);
+          const estimatedWaitSeconds =
+            this.getCurrentTrackRemainingSeconds() +
+            tracksAhead.reduce(
+              (sum, t) => sum + (t.duration ? parseDuration(t.duration) : 0),
+              0
+            );
+
+          logger.info(`➕ Added to queue: ${track.title} (position ${upcomingPosition})`);
+          await sendMusicEmbed(guild, track, "queued", {
+            upcomingPosition,
+            estimatedWaitSeconds,
+          });
         }
       } else {
         logger.debug("❓ No matching voice command found");
