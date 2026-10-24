@@ -129,18 +129,36 @@ const COMMAND_EMOJIS = {
   stop: "⏹️",
 } as const;
 
+const COMMAND_LABELS: Record<keyof typeof COMMAND_EMOJIS, string> = {
+  skip: "Skipped",
+  pause: "Paused",
+  resume: "Resumed",
+  stop: "Stopped",
+};
+
 export async function sendCommandEmbed(
   guild: Guild,
   command: keyof typeof COMMAND_EMOJIS,
+  track: Track | null,
   userId?: string
 ): Promise<void> {
   const channel = getNotificationChannel(guild);
   if (!channel) return;
 
   try {
+    const emoji = COMMAND_EMOJIS[command];
+    const label = COMMAND_LABELS[command];
+    const linkText = track
+      ? ` [${track.author ? `${track.title} by ${track.author}` : track.title}](${track.url})`
+      : "";
+
     const embed = new EmbedBuilder()
-      .setDescription(COMMAND_EMOJIS[command])
+      .setDescription(`${emoji} ${label}${linkText}`)
       .setColor(0x99aab5);
+
+    if (track?.thumbnail) {
+      embed.setThumbnail(track.thumbnail);
+    }
 
     if (userId) {
       embed.setFooter(await resolveRequesterFooter(guild, userId));

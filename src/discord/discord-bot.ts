@@ -311,7 +311,7 @@ export class DiscordBot {
         this.audioPlayer.stop();
         stopCurrentStream();
         logger.info("🛑 Music stopped and queue cleared");
-        await sendCommandEmbed(guild, "stop", userId);
+        await sendCommandEmbed(guild, "stop", this.currentTrack, userId);
       } else if (SKIP_VARIANTS.some((v) => lowercaseTranscript.includes(v))) {
         if (this.audioPlayer.state.status === "idle") {
           logger.info("⏭️ Nothing playing to skip");
@@ -319,17 +319,17 @@ export class DiscordBot {
           this.audioPlayer.stop();
           stopCurrentStream();
           logger.info("⏭️ Skipped current track");
-          await sendCommandEmbed(guild, "skip", userId);
+          await sendCommandEmbed(guild, "skip", this.currentTrack, userId);
         }
       } else if (PAUSE_VARIANTS.some((v) => lowercaseTranscript.includes(v))) {
         if (this.audioPlayer.pause()) {
           logger.info("⏸️ Music paused");
-          await sendCommandEmbed(guild, "pause", userId);
+          await sendCommandEmbed(guild, "pause", this.currentTrack, userId);
         }
       } else if (RESUME_VARIANTS.some((v) => lowercaseTranscript.includes(v))) {
         if (this.audioPlayer.unpause()) {
           logger.info("▶️ Music resumed");
-          await sendCommandEmbed(guild, "resume", userId);
+          await sendCommandEmbed(guild, "resume", this.currentTrack, userId);
         }
       } else if (MUSIC_VARIANTS.some((v) => lowercaseTranscript.includes(v))) {
         const track = await resolveTrack(transcript, englishTranscript);
