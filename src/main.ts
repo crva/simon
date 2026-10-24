@@ -6,6 +6,34 @@ async function main(): Promise<void> {
   let voskManager: VoskManager | undefined;
   let discordBot: DiscordBot | undefined;
 
+  const shutdown = async (exitCode: number): Promise<void> => {
+    try {
+      if (discordBot) {
+        await discordBot.stop();
+      }
+      if (voskManager) {
+        voskManager.destroy();
+      }
+      logger.info("✅ Cleanup completed");
+    } catch (error) {
+      logger.error({ error }, "❌ Error during shutdown");
+    } finally {
+      process.exit(exitCode);
+    }
+  };
+
+  // Without these, a native crash or a stray unhandled rejection kills the
+  // process without freeing the Vosk models or killing the yt-dlp subprocess
+  process.on("uncaughtException", (error) => {
+    logger.error({ error }, "❌ Uncaught exception");
+    void shutdown(1);
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    logger.error({ error: reason }, "❌ Unhandled promise rejection");
+    void shutdown(1);
+  });
+
   try {
     // Initialize Vosk
     voskManager = new VoskManager();
@@ -16,33 +44,13 @@ async function main(): Promise<void> {
     // Start the bot
     await discordBot.start();
 
-    // Graceful shutdown handling
-    process.on("SIGINT", async () => {
+    process.on("SIGINT", () => {
       logger.info("\n🔄 Graceful shutdown initiated...");
-
-      try {
-        if (discordBot) {
-          await discordBot.stop();
-        }
-        if (voskManager) {
-          voskManager.destroy();
-        }
-        logger.info("✅ Cleanup completed");
-        process.exit(0);
-      } catch (error) {
-        logger.error({ error }, "❌ Error during shutdown");
-        process.exit(1);
-      }
+      void shutdown(0);
     });
   } catch (error) {
     logger.error({ error }, "❌ Failed to start application");
-
-    // Cleanup if initialization failed
-    if (voskManager) {
-      voskManager.destroy();
-    }
-
-    process.exit(1);
+    await shutdown(1);
   }
 }
 

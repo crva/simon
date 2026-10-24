@@ -146,3 +146,6 @@ vosk/models/*
 # Music Downloads
 music/*
 !music/README.md
+
+# Local Claude Code tool permissions, not meant for the shared repo
+.claude/

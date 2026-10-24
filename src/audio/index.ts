@@ -1,2 +1,2 @@
 export * from "./audio-transform";
-export * from "./youtube-downloader";
+export * from "./music-stream";

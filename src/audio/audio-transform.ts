@@ -12,23 +12,26 @@ export function convertAudioFormat(pcmData: Buffer): Buffer {
   const outputBuffer = Buffer.alloc(monoSamples * 2);
 
   for (let i = 0; i < monoSamples; i++) {
-    const stereoIndex = i * 3;
-    const byteIndex = stereoIndex * 4;
+    const baseStereoIndex = i * 3;
+    let sum = 0;
+    let count = 0;
 
-    if (byteIndex + 3 < pcmData.length) {
-      let leftSample = pcmData.readInt16LE(byteIndex);
-      let rightSample = pcmData.readInt16LE(byteIndex + 2);
-
-      // Handle potential overflow
-      if (leftSample > 32767) leftSample -= 65536;
-      if (rightSample > 32767) rightSample -= 65536;
-
-      // Convert stereo to mono and clamp
-      const monoSample = Math.floor((leftSample + rightSample) / 2);
-      const clampedSample = Math.max(-32768, Math.min(32767, monoSample));
-
-      outputBuffer.writeInt16LE(clampedSample, i * 2);
+    // Average 3 consecutive stereo frames as a basic anti-aliasing
+    // low-pass filter before decimating, instead of dropping 2/3 of samples
+    for (let j = 0; j < 3; j++) {
+      const byteIndex = (baseStereoIndex + j) * 4;
+      if (byteIndex + 3 < pcmData.length) {
+        const leftSample = pcmData.readInt16LE(byteIndex);
+        const rightSample = pcmData.readInt16LE(byteIndex + 2);
+        sum += (leftSample + rightSample) / 2;
+        count++;
+      }
     }
+
+    const monoSample = count > 0 ? sum / count : 0;
+    const clampedSample = Math.max(-32768, Math.min(32767, Math.round(monoSample)));
+
+    outputBuffer.writeInt16LE(clampedSample, i * 2);
   }
 
   return outputBuffer;

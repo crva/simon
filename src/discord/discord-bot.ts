@@ -1,31 +1,61 @@
 import {
   AudioPlayer,
+  entersState,
   EndBehaviorType,
   joinVoiceChannel,
   VoiceConnection,
   VoiceConnectionStatus,
 } from "@discordjs/voice";
 import { Client, GatewayIntentBits } from "discord.js";
-import { cleanupAllMusic, createOpusToVoskTransform } from "../audio";
+import { createOpusToVoskTransform, stopCurrentStream, streamMusic } from "../audio";
 import { config } from "../config";
 import { logger } from "../utils";
 import { VoskManager } from "../vosk";
-import { playMusic, sendMessage } from "./commands";
+import {
+  MUSIC_VARIANTS,
+  MusicQueue,
+  resolveTrack,
+  sendMessage,
+  Track,
+} from "./commands";
+
+// Vosk consistently mishears "simon" as these near-homophones, so we treat
+// them as equivalent wake words instead of fighting the model's accuracy
+const WAKE_WORD_VARIANTS = ["simon", "c'est mon", "cest mon", "six mots", "ces mots", "si mon"];
+const RESUME_VARIANTS = ["reprise", "reprend", "continue", "resume"];
+const SKIP_VARIANTS = ["skip", "skype"];
+const PAUSE_VARIANTS = ["pause", "pose"];
+
+function matchesWakeWord(text: string): boolean {
+  const normalized = text.toLowerCase().trim();
+  return WAKE_WORD_VARIANTS.some((variant) => normalized.startsWith(variant));
+}
 
 export class DiscordBot {
   private client: Client;
   private voskManager: VoskManager;
   private audioPlayer: AudioPlayer;
   private currentConnection: VoiceConnection | null = null;
-  private isProcessingVoice: boolean = false;
+  private activeSpeakers: Set<string> = new Set();
+  private musicQueue: MusicQueue = new MusicQueue();
 
   constructor(voskManager: VoskManager) {
     this.voskManager = voskManager;
     this.audioPlayer = new AudioPlayer();
 
-    // Add debug events for audio player
     this.audioPlayer.on("error", (error) => {
       logger.error({ error }, "❌ AudioPlayer error");
+    });
+
+    // Auto-advance: whenever playback goes idle (track ended, or was
+    // skipped/stopped), play whatever's next in the queue, if anything
+    this.audioPlayer.on("stateChange", (oldState, newState) => {
+      if (newState.status === "idle" && oldState.status !== "idle") {
+        const next = this.musicQueue.next();
+        if (next) {
+          this.playTrack(next);
+        }
+      }
     });
 
     this.client = new Client({
@@ -90,8 +120,27 @@ export class DiscordBot {
       connection.subscribe(this.audioPlayer);
     });
 
-    connection.on(VoiceConnectionStatus.Disconnected, () => {
-      logger.info("❌ Disconnected from voice channel");
+    connection.on(VoiceConnectionStatus.Disconnected, async () => {
+      logger.warn("⚠️ Disconnected from voice channel, attempting to reconnect...");
+      try {
+        // Discord sometimes disconnects/reconnects us itself (e.g. the voice
+        // server moved) — give it a few seconds before rejoining manually
+        await Promise.race([
+          entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
+          entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
+        ]);
+      } catch {
+        try {
+          connection.destroy();
+        } catch {
+          // already destroyed
+        }
+        try {
+          await this.initializeVoiceConnection();
+        } catch (error) {
+          logger.error({ error }, "❌ Failed to reconnect to voice channel");
+        }
+      }
     });
   }
 
@@ -110,7 +159,7 @@ export class DiscordBot {
       }
 
       logger.debug(
-        { isProcessingVoice: this.isProcessingVoice },
+        { activeSpeakers: this.activeSpeakers.size },
         `🎯 User ${userId} started speaking`
       );
       this.handleUserSpeech(connection, userId);
@@ -118,33 +167,21 @@ export class DiscordBot {
   }
 
   /**
-   * Lock voice processing to prevent concurrent operations
-   */
-  private lockVoiceProcessing(): boolean {
-    if (this.isProcessingVoice) {
-      return false; // Already locked
-    }
-    this.isProcessingVoice = true;
-    return true; // Successfully locked
-  }
-
-  /**
-   * Unlock voice processing
-   */
-  private unlockVoiceProcessing(): void {
-    this.isProcessingVoice = false;
-  }
-
-  /**
    * Handle speech recognition for a specific user
    */
   private handleUserSpeech(connection: VoiceConnection, userId: string): void {
-    // Avoid concurrent processing
-    if (!this.lockVoiceProcessing()) {
+    if (this.activeSpeakers.has(userId)) {
       return;
     }
+    this.activeSpeakers.add(userId);
 
     const recognizer = this.voskManager.createRecognizer();
+    // Run a small English recognizer alongside the French one: the French
+    // model mangles English words, so once the "musique" command is spotted
+    // we reset this one to re-read just the song title in English
+    const englishRecognizer = this.voskManager.createEnglishRecognizer();
+    let englishResetDone = false;
+
     const audioStream = connection.receiver.subscribe(userId, {
       end: {
         behavior: EndBehaviorType.AfterSilence,
@@ -154,41 +191,77 @@ export class DiscordBot {
 
     const audioTransform = createOpusToVoskTransform();
     let hasPartialResult = false;
+    // Serialize chunk processing per speaker: koffi runs each native call on
+    // a worker thread, so without this, overlapping calls could race on the
+    // same recognizer handle if chunks arrive faster than they're processed
+    let processingQueue: Promise<void> = Promise.resolve();
 
     audioStream
       .pipe(audioTransform)
       .on("data", (chunk: Buffer) => {
-        const partialText = this.voskManager.processAudioChunk(
-          recognizer,
-          chunk
-        );
-        if (partialText) {
-          logger.debug(`🎤 Partial: ${partialText}`);
-          hasPartialResult = true;
-        }
+        processingQueue = processingQueue.then(async () => {
+          const [partialText] = await Promise.all([
+            this.voskManager.processAudioChunk(recognizer, chunk),
+            this.voskManager.processAudioChunk(englishRecognizer, chunk),
+          ]);
+          if (partialText) {
+            logger.debug(`🎤 Partial: ${partialText}`);
+            hasPartialResult = true;
+          }
+
+          if (!englishResetDone) {
+            const livePartial = await this.voskManager.getLivePartial(recognizer);
+            const normalizedPartial = livePartial?.toLowerCase();
+            if (
+              normalizedPartial &&
+              MUSIC_VARIANTS.some((v) => normalizedPartial.includes(v))
+            ) {
+              englishResetDone = true;
+              englishRecognizer.reset();
+            }
+          }
+        });
       })
       .on("end", async () => {
-        const finalText = this.voskManager.getFinalResult(recognizer);
+        await processingQueue;
+        const finalText = await this.voskManager.getFinalResult(recognizer);
+        const englishText = await this.voskManager.getFinalResult(englishRecognizer);
 
         if (finalText) {
-          logger.info(`✅ Final transcription: ${finalText}`);
-
-          // Process voice commands if transcript starts with "simon"
-          if (finalText.toLowerCase().startsWith("simon")) {
-            await this.processVoiceCommand(finalText, userId);
+          if (matchesWakeWord(finalText)) {
+            logger.info(`✅ Final transcription: ${finalText}`);
+            await this.processVoiceCommand(finalText, userId, englishText);
+          } else {
+            logger.debug(`🔇 Ignored (no wake word): ${finalText}`);
           }
         } else if (!hasPartialResult) {
           logger.debug("❌ No speech detected");
         }
 
         recognizer.free();
-        this.unlockVoiceProcessing();
+        englishRecognizer.free();
+        this.activeSpeakers.delete(userId);
       })
-      .on("error", (error) => {
+      .on("error", async (error) => {
         logger.error({ error }, "Audio stream error");
+        await processingQueue;
         recognizer.free();
-        this.unlockVoiceProcessing();
+        englishRecognizer.free();
+        this.activeSpeakers.delete(userId);
       });
+  }
+
+  /**
+   * Starts playing a track immediately, replacing whatever was playing
+   */
+  private playTrack(track: Track): void {
+    try {
+      const resource = streamMusic(track.url, track.title);
+      this.audioPlayer.play(resource);
+      logger.info(`🎵 Playing: ${track.title}`);
+    } catch (error) {
+      logger.error({ error }, "❌ Playback failed");
+    }
   }
 
   /**
@@ -196,7 +269,8 @@ export class DiscordBot {
    */
   private async processVoiceCommand(
     transcript: string,
-    userId: string
+    userId: string,
+    englishTranscript: string | null
   ): Promise<void> {
     const lowercaseTranscript = transcript.toLowerCase();
 
@@ -217,18 +291,41 @@ export class DiscordBot {
       ) {
         logger.info("📝 Executing send message command");
         await sendMessage(guild, transcript);
-      } else if (lowercaseTranscript.includes("musique")) {
-        logger.info("🎵 Executing play music command");
-        // Stop current music if playing to play new one
-        if (this.audioPlayer.state.status === "playing") {
-          logger.info("🛑 Stopping current music to play new one");
-          this.audioPlayer.stop();
-        }
-        await playMusic(guild, transcript, this.audioPlayer);
       } else if (lowercaseTranscript.includes("stop")) {
         logger.info("🛑 Executing stop music command");
+        this.musicQueue.clear();
         this.audioPlayer.stop();
-        logger.info("✅ Music stopped");
+        stopCurrentStream();
+        logger.info("✅ Music stopped and queue cleared");
+      } else if (SKIP_VARIANTS.some((v) => lowercaseTranscript.includes(v))) {
+        if (this.audioPlayer.state.status === "idle") {
+          logger.info("⏭️ Nothing playing to skip");
+        } else {
+          logger.info("⏭️ Skipping current track");
+          this.audioPlayer.stop();
+          stopCurrentStream();
+        }
+      } else if (PAUSE_VARIANTS.some((v) => lowercaseTranscript.includes(v))) {
+        if (this.audioPlayer.pause()) {
+          logger.info("⏸️ Music paused");
+        }
+      } else if (RESUME_VARIANTS.some((v) => lowercaseTranscript.includes(v))) {
+        if (this.audioPlayer.unpause()) {
+          logger.info("▶️ Music resumed");
+        }
+      } else if (MUSIC_VARIANTS.some((v) => lowercaseTranscript.includes(v))) {
+        const track = await resolveTrack(transcript, englishTranscript);
+        if (!track) return;
+
+        if (this.audioPlayer.state.status === "idle") {
+          logger.info("🎵 Executing play music command");
+          this.playTrack(track);
+        } else {
+          this.musicQueue.enqueue(track);
+          logger.info(
+            `➕ Added to queue: ${track.title} (position ${this.musicQueue.size})`
+          );
+        }
       } else {
         logger.debug("❓ No matching voice command found");
       }
@@ -257,7 +354,7 @@ export class DiscordBot {
   async stop(): Promise<void> {
     logger.info("🛑 Stopping bot...");
     this.audioPlayer.stop();
-    cleanupAllMusic();
+    stopCurrentStream();
     if (this.currentConnection) {
       this.currentConnection.destroy();
     }

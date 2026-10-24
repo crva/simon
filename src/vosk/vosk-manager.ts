@@ -1,15 +1,17 @@
-import * as vosk from "vosk";
+import * as vosk from "./vosk-native";
 import { config } from "../config";
 import { logger } from "../utils";
 
 export class VoskManager {
   private model: vosk.Model;
+  private englishModel: vosk.Model;
 
   constructor() {
     try {
       vosk.setLogLevel(-1);
       this.model = new vosk.Model(config.vosk.modelPath);
-      logger.info("✅ Vosk model loaded successfully");
+      this.englishModel = new vosk.Model(config.vosk.englishModelPath);
+      logger.info("✅ Vosk models loaded successfully");
     } catch (error) {
       logger.error({ error }, "❌ Failed to load Vosk model");
       throw error;
@@ -27,15 +29,26 @@ export class VoskManager {
   }
 
   /**
+   * Creates a recognizer using the (small) English model, used to re-read
+   * song titles since the main French model mangles English words
+   */
+  createEnglishRecognizer(): vosk.Recognizer {
+    return new vosk.Recognizer({
+      model: this.englishModel,
+      sampleRate: config.vosk.sampleRate,
+    });
+  }
+
+  /**
    * Processes audio chunk and returns recognition result
    */
-  processAudioChunk(
+  async processAudioChunk(
     recognizer: vosk.Recognizer,
     audioChunk: Buffer
-  ): string | null {
+  ): Promise<string | null> {
     try {
-      if (recognizer.acceptWaveform(audioChunk)) {
-        const result = recognizer.result();
+      if (await recognizer.acceptWaveform(audioChunk)) {
+        const result = await recognizer.result();
         const parsedResult = JSON.parse(result);
         return parsedResult.text?.trim() || null;
       }
@@ -47,11 +60,25 @@ export class VoskManager {
   }
 
   /**
+   * Gets the current (continuously updating) partial hypothesis, even
+   * mid-utterance before any silence/segment boundary is reached
+   */
+  async getLivePartial(recognizer: vosk.Recognizer): Promise<string | null> {
+    try {
+      const partial = JSON.parse(await recognizer.partialResult());
+      return partial.partial?.trim() || null;
+    } catch (error) {
+      logger.error({ error }, "Partial result error");
+      return null;
+    }
+  }
+
+  /**
    * Gets final recognition result
    */
-  getFinalResult(recognizer: vosk.Recognizer): string | null {
+  async getFinalResult(recognizer: vosk.Recognizer): Promise<string | null> {
     try {
-      const finalResult = recognizer.finalResult();
+      const finalResult = JSON.parse(await recognizer.finalResult());
       return finalResult.text?.trim() || null;
     } catch (error) {
       logger.error({ error }, "Final result error");
@@ -64,5 +91,6 @@ export class VoskManager {
    */
   destroy(): void {
     this.model.free();
+    this.englishModel.free();
   }
 }
