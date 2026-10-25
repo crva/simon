@@ -27,7 +27,7 @@ function resolveBaseUrl(): string {
     const gateway = execSync("ip route | awk '/default/ {print $3}'").toString().trim();
     cachedBaseUrl = `http://${gateway}:11434`;
   } catch (error) {
-    logger.error({ error }, "❌ Failed to resolve Ollama host, falling back to localhost");
+    logger.error({ err: error }, "❌ Failed to resolve Ollama host, falling back to localhost");
     cachedBaseUrl = "http://localhost:11434";
   }
   return cachedBaseUrl;
@@ -58,7 +58,9 @@ function parseModelOutput(raw: string): ParsedCommand {
 export async function parseCommand(transcript: string): Promise<ParsedCommand> {
   const prompt = COMMAND_PROMPT.replace("{{PHRASE}}", transcript);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
+  // Generous margin for a cold model load (normally avoided by ollama-init's
+  // warmup, but still possible after Ollama restarts or evicts the model).
+  const timeout = setTimeout(() => controller.abort(), 30_000);
 
   try {
     const response = await fetch(`${resolveBaseUrl()}/api/generate`, {
@@ -83,7 +85,7 @@ export async function parseCommand(transcript: string): Promise<ParsedCommand> {
     logger.debug({ transcript, parsed }, "🧠 LLM command parsed");
     return parsed;
   } catch (error) {
-    logger.error({ error }, "❌ Failed to parse command via LLM");
+    logger.error({ err: error }, "❌ Failed to parse command via LLM");
     return NONE_COMMAND;
   } finally {
     clearTimeout(timeout);

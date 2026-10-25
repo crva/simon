@@ -3,6 +3,22 @@ services:
     image: ollama/ollama:latest
     volumes:
       - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-hf.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q8_0}
+      # Keep the model loaded in VRAM indefinitely once warmed up below —
+      # without this it unloads after 5min idle and the next voice command
+      # pays a cold-load cost that can exceed the bot's request timeout.
+      OLLAMA_KEEP_ALIVE: "-1"
+    # Starts the server, waits for it to be up, pulls the model (instant on
+    # later restarts — already-pulled models are cached in the volume), then
+    # runs one generation to force it into VRAM so the first real voice
+    # command doesn't pay that load cost instead.
+    entrypoint:
+      [
+        "sh",
+        "-c",
+        "ollama serve & until ollama list >/dev/null 2>&1; do sleep 1; done; ollama pull \"$OLLAMA_MODEL\" && ollama run \"$OLLAMA_MODEL\" hi; wait",
+      ]
     deploy:
       resources:
         reservations:
@@ -12,23 +28,13 @@ services:
               capabilities: ["gpu"]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "ollama", "list"]
+      # "healthy" here means the model is pulled AND warmed into VRAM, not
+      # just that the server is up — that's what `bot` actually depends on.
+      test: ["CMD-SHELL", "ollama ps | grep -q \"$OLLAMA_MODEL\""]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 30s
-
-  # One-shot: pulls the model into ollama's volume on first run. Already
-  # pulled models are cached there, so this is instant on later restarts.
-  ollama-init:
-    image: ollama/ollama:latest
-    depends_on:
-      ollama:
-        condition: service_healthy
-    environment:
-      OLLAMA_HOST: ollama:11434
-    entrypoint: ["ollama", "pull", "${OLLAMA_MODEL:-hf.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q8_0}"]
-    restart: "no"
+      retries: 60
+      start_period: 10s
 
   bot:
     build:
@@ -40,8 +46,8 @@ services:
       # reachable by name on the compose network.
       OLLAMA_BASE_URL: http://ollama:11434
     depends_on:
-      ollama-init:
-        condition: service_completed_successfully
+      ollama:
+        condition: service_healthy
     volumes:
       - ./vosk/models:/app/vosk/models:ro
       - ./whisper/models:/app/whisper/models:ro

@@ -11,12 +11,13 @@ A Discord bot that listens to a voice channel, and when it hears its wake word, 
 - Linux or WSL (the native Vosk/Whisper bindings in `vosk/native`/`whisper/native` are built for `linux-x64` and `win-x64`; Windows native compilation of some dependencies is not supported — see `vosk/models/README.md` if you need another platform)
 - Vosk model files (see `vosk/models/README.md`)
 - A Whisper model file (see `whisper/models/README.md`)
+- A `whisper-cli` binary for your machine (see `whisper/native/README.md`) — unlike Vosk's, this one isn't vendored and you build it yourself; skip it entirely if using Docker
 - [Ollama](https://ollama.com) running a small instruction-tuned model, reachable from wherever the bot runs (see [Local LLM](#local-llm-ollama) below)
 - A CUDA-capable GPU is strongly recommended for Whisper (a few seconds per command on CPU vs ~1-2s on GPU) — see `whisper/README.md` for the CPU-only fallback
 
 ## Setup
 
-Assumes the Prerequisites above are already done — models downloaded, Ollama running with a model pulled. Nothing here builds `whisper.cpp`: the binary in `whisper/native/` is prebuilt and already committed, so there's no compile step for it on this path.
+Assumes the Prerequisites above are already done — models downloaded, `whisper-cli` built for your machine, Ollama running with a model pulled.
 
 1. `npm install`
 2. Copy `.env.blank` to `.env` and fill in the values (see below)
@@ -34,11 +35,11 @@ Requirements: Docker Desktop with the WSL2 backend and GPU support enabled (Sett
 2. Copy `.env.blank` to `.env` and fill in the values, same as the manual setup. `OLLAMA_BASE_URL`/`OLLAMA_MODEL` are read by `docker-compose.yml` itself (to point the bot at the `ollama` service and to pull the right model) — no separate Ollama install needed.
 3. `docker compose up --build`
 
-First run: the image build compiles `whisper.cpp` with CUDA from source (several minutes), and the `ollama-init` service pulls the model into a persistent volume (size depends on the model — a few minutes). Both are cached afterward: `docker compose up` on a later run just starts the containers, and only re-triggers the slow parts if you change `src/`, `package.json`, the Dockerfile, or `OLLAMA_MODEL`.
+First run: the image build compiles `whisper.cpp` with CUDA from source (several minutes), and the `ollama` service pulls the model into a persistent volume and warms it into VRAM before reporting healthy (size depends on the model — a few minutes). Both are cached afterward: `docker compose up` on a later run just starts the containers, and only re-triggers the slow parts if you change `src/`, `package.json`, the Dockerfile, or `OLLAMA_MODEL`.
 
 Targets an Ampere GPU (`CMAKE_CUDA_ARCHITECTURES=86`, e.g. RTX 30xx) by default — override with `docker compose build --build-arg CUDA_ARCH=89` for RTX 40xx, `75` for RTX 20xx/GTX 16xx, etc.
 
-Prefer to keep using your own host Ollama instead (e.g. you've already got other models pulled there)? Delete the `ollama`/`ollama-init` services from `docker-compose.yml`, set `OLLAMA_BASE_URL: http://host.docker.internal:11434` on the `bot` service instead, and make sure Ollama is listening on more than `127.0.0.1` (see [Local LLM](#local-llm-ollama)).
+Prefer to keep using your own host Ollama instead (e.g. you've already got other models pulled there)? Delete the `ollama` service from `docker-compose.yml`, set `OLLAMA_BASE_URL: http://host.docker.internal:11434` on the `bot` service instead, and make sure Ollama is listening on more than `127.0.0.1` (see [Local LLM](#local-llm-ollama)).
 
 ## Environment variables
 

@@ -29,6 +29,9 @@ JSON: {"action": "play", "query": "blanka de pnl", "channel": null}
 Phrase: "simon démarre la musique thriller de michael jackson"
 JSON: {"action": "play", "query": "thriller de michael jackson", "channel": null}
 
+Phrase: "simon lance 7 sur 7 de freeze corleone s'il te plait"
+JSON: {"action": "play", "query": "7 sur 7 de freeze corleone", "channel": null}
+
 Phrase: "simon joue moi du eminem"
 JSON: {"action": "play", "query": "eminem", "channel": null}
 

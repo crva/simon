@@ -2,11 +2,13 @@
 
 Speech recognition runs in two passes. Vosk (`../vosk/`) streams live and acts as a cheap wake-word pre-filter. Once an utterance plausibly contains the wake word, the full utterance is re-transcribed here with `whisper.cpp` for much better accuracy — especially on slang, invented song titles, and French/English code-switching (one multilingual model handles both natively, instead of running two separate recognizers and scoring which one is less garbled).
 
-`native/linux-x64/` vendors a prebuilt `whisper-cli` binary (CUDA-accelerated) plus its own small `ggml`/`whisper` shared libraries. The actual CUDA runtime libraries (`libcudart`, `libcublas`, `libcublasLt`) are **not** vendored — `libcublasLt` alone is close to 500MB. They're expected to already be present on the machine running the bot, via the CUDA toolkit installed as described below. `CUDA_LIB_PATH` in `.env` points at them if they're not at the default `~/cuda-toolkit/lib64`.
+`native/linux-x64/` needs a `whisper-cli` binary (CUDA-accelerated) plus its own small `ggml`/`whisper` shared libraries — **you build these yourself** (see below), they aren't vendored in git. Unlike `vosk/native/`, this binary is linked against your own CUDA toolkit version, GPU architecture, and glibc, so a copy built on one machine generally won't run on another — there's nothing portable to commit. The actual CUDA runtime libraries (`libcudart`, `libcublas`, `libcublasLt`) are **also not vendored** — `libcublasLt` alone is close to 500MB. They're expected to already be present on the machine running the bot, via the CUDA toolkit installed as described below. `CUDA_LIB_PATH` in `.env` points at them if they're not at the default `~/cuda-toolkit/lib64`.
+
+Using [Docker](../README.md#docker) instead? None of this applies — the image builds its own copy of `whisper.cpp` from source every time, matched to the image's own CUDA toolkit, so there's nothing to build or vendor on your end.
 
 Without a GPU/CUDA toolkit, drop `CUDA_LIB_PATH` and rebuild as CPU-only (see step 3) — same code path, just slower (a few seconds per command instead of ~1-2s).
 
-## Rebuilding (different platform, different GPU, or updating the version)
+## Building
 
 ### 1. Build tools
 
