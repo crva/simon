@@ -16,9 +16,29 @@ A Discord bot that listens to a voice channel, and when it hears its wake word, 
 
 ## Setup
 
+Assumes the Prerequisites above are already done — models downloaded, Ollama running with a model pulled. Nothing here builds `whisper.cpp`: the binary in `whisper/native/` is prebuilt and already committed, so there's no compile step for it on this path.
+
 1. `npm install`
 2. Copy `.env.blank` to `.env` and fill in the values (see below)
 3. `npm run build` then `npm start`, or `npm run dev` for pretty/verbose logs
+
+Or skip straight to [Docker](#docker) below — it also builds whisper.cpp with CUDA and runs Ollama for you, so there's nothing to install on the host at all beyond Docker itself.
+
+## Docker
+
+Everything — the bot, Whisper (built with CUDA inside the image), and Ollama (with the model auto-pulled on first run) — runs via `docker compose up`, no manual build or host-side Ollama setup required.
+
+Requirements: Docker Desktop with the WSL2 backend and GPU support enabled (Settings → Resources → WSL Integration, and the "Enable GPU support" option — on by default once NVIDIA's WSL driver is detected, which you already have if `nvidia-smi` works in WSL).
+
+1. Get the model files (not baked into the image — they're mounted in, so rebuilding the image doesn't mean re-downloading them): `vosk/models/README.md` and `whisper/models/README.md`.
+2. Copy `.env.blank` to `.env` and fill in the values, same as the manual setup. `OLLAMA_BASE_URL`/`OLLAMA_MODEL` are read by `docker-compose.yml` itself (to point the bot at the `ollama` service and to pull the right model) — no separate Ollama install needed.
+3. `docker compose up --build`
+
+First run: the image build compiles `whisper.cpp` with CUDA from source (several minutes), and the `ollama-init` service pulls the model into a persistent volume (size depends on the model — a few minutes). Both are cached afterward: `docker compose up` on a later run just starts the containers, and only re-triggers the slow parts if you change `src/`, `package.json`, the Dockerfile, or `OLLAMA_MODEL`.
+
+Targets an Ampere GPU (`CMAKE_CUDA_ARCHITECTURES=86`, e.g. RTX 30xx) by default — override with `docker compose build --build-arg CUDA_ARCH=89` for RTX 40xx, `75` for RTX 20xx/GTX 16xx, etc.
+
+Prefer to keep using your own host Ollama instead (e.g. you've already got other models pulled there)? Delete the `ollama`/`ollama-init` services from `docker-compose.yml`, set `OLLAMA_BASE_URL: http://host.docker.internal:11434` on the `bot` service instead, and make sure Ollama is listening on more than `127.0.0.1` (see [Local LLM](#local-llm-ollama)).
 
 ## Environment variables
 
@@ -68,6 +88,8 @@ Music is streamed directly (no full download before playing); with `MUSIC_CACHE_
 The actual prompt (with the full set of few-shot examples used to keep the small model reliable) lives in `src/llm/command-prompt.ts` — tune it there if a particular phrasing keeps getting misread.
 
 ## Local LLM (Ollama)
+
+This section is for the manual (non-Docker) setup — the Docker setup pulls and runs Ollama for you.
 
 1. Install [Ollama](https://ollama.com) and pull a small instruction-tuned model, e.g.:
    ```bash
