@@ -1,27 +1,22 @@
 # Vosk Models
 
-This directory holds the speech recognition models. The bot needs two: French (primary) and English (used to re-read song titles, since the French model mangles English words).
+This directory holds the French Vosk model. Vosk only runs as a cheap, real-time pre-filter now (is the wake word plausibly in there?) — the actual transcription used for commands comes from Whisper (see `../../whisper/`), so there's no separate English model to download here anymore.
 
 ## Setup
 
-1. Download and extract both models:
+1. Download and extract the French model:
 
    ```bash
-   # French (pick one; the full model is far more accurate but ~1.5GB and slower to load)
    wget https://alphacephei.com/vosk/models/vosk-model-fr-0.6-linto-2.2.0.zip
    # or: vosk-model-fr-0.22.zip (same size, no speed guarantee) / vosk-model-small-fr-0.22.zip (~40MB, low accuracy)
-
-   # English (small is enough, it's only used for song titles)
-   wget https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
    ```
 
-   Extract each zip here (`unzip <file>.zip`, or `python3 -m zipfile -e <file>.zip .` if `unzip` isn't installed).
+   Extract it here (`unzip <file>.zip`, or `python3 -m zipfile -e <file>.zip .` if `unzip` isn't installed).
 
-2. Set both paths in `.env`:
+2. Set the path in `.env`:
 
    ```
    VOSK_MODEL_PATH=./vosk/models/vosk-model-fr-0.6-linto-2.2.0
-   VOSK_MODEL_PATH_EN=./vosk/models/vosk-model-small-en-us-0.15
    ```
 
 Full model list: https://alphacephei.com/vosk/models

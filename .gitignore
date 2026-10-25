@@ -143,6 +143,17 @@ vite.config.ts.timestamp-*
 vosk/models/*
 !vosk/models/README.md
 
+# Whisper model (the model is ~465MB — over GitHub's hard 100MB-per-file push limit)
+whisper/models/*
+!whisper/models/README.md
+
+# Whisper native binary: compiled against *this machine's* CUDA toolkit,
+# GPU architecture, and glibc version — won't run on anyone else's. Not a
+# portable artifact like vosk/native/, so it isn't vendored; see
+# whisper/native/README.md.
+whisper/native/*
+!whisper/native/README.md
+
 # Music Downloads
 music/*
 !music/README.md

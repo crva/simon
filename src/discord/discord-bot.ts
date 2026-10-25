@@ -9,10 +9,11 @@ import {
 import { Client, GatewayIntentBits } from "discord.js";
 import { createOpusToVoskTransform, stopCurrentStream, streamMusic } from "../audio";
 import { config } from "../config";
+import { ParsedCommand, parseCommand } from "../llm";
 import { logger } from "../utils";
 import { VoskManager } from "../vosk";
+import { transcribeWithWhisper } from "../whisper";
 import {
-  MUSIC_VARIANTS,
   MusicQueue,
   parseDuration,
   resolveTrack,
@@ -23,15 +24,15 @@ import {
 } from "./commands";
 
 // Vosk consistently mishears "simon" as these near-homophones, so we treat
-// them as equivalent wake words instead of fighting the model's accuracy
+// them as equivalent wake words instead of fighting the model's accuracy.
+// This is just a cheap pre-filter (anywhere in the phrase, not just the
+// start) to decide whether an utterance is worth the cost of Whisper + LLM —
+// the actual command is parsed from Whisper's transcript, not Vosk's.
 const WAKE_WORD_VARIANTS = ["simon", "c'est mon", "cest mon", "six mots", "ces mots", "si mon"];
-const RESUME_VARIANTS = ["reprise", "reprend", "continue", "resume"];
-const SKIP_VARIANTS = ["skip", "skype"];
-const PAUSE_VARIANTS = ["pause", "pose"];
 
 function matchesWakeWord(text: string): boolean {
   const normalized = text.toLowerCase().trim();
-  return WAKE_WORD_VARIANTS.some((variant) => normalized.startsWith(variant));
+  return WAKE_WORD_VARIANTS.some((variant) => normalized.includes(variant));
 }
 
 export class DiscordBot {
@@ -180,11 +181,9 @@ export class DiscordBot {
     this.activeSpeakers.add(userId);
 
     const recognizer = this.voskManager.createRecognizer();
-    // Run a small English recognizer alongside the French one: the French
-    // model mangles English words, so once the "musique" command is spotted
-    // we reset this one to re-read just the song title in English
-    const englishRecognizer = this.voskManager.createEnglishRecognizer();
-    let englishResetDone = false;
+    // Buffered so the full utterance can be re-transcribed by Whisper if
+    // Vosk's cheap pass below flags it as plausibly containing the wake word
+    const audioChunks: Buffer[] = [];
 
     const audioStream = connection.receiver.subscribe(userId, {
       end: {
@@ -203,54 +202,50 @@ export class DiscordBot {
     audioStream
       .pipe(audioTransform)
       .on("data", (chunk: Buffer) => {
+        audioChunks.push(chunk);
+
         processingQueue = processingQueue.then(async () => {
-          const [partialText] = await Promise.all([
-            this.voskManager.processAudioChunk(recognizer, chunk),
-            this.voskManager.processAudioChunk(englishRecognizer, chunk),
-          ]);
+          const partialText = await this.voskManager.processAudioChunk(recognizer, chunk);
           if (partialText) {
             logger.debug(`🎤 Partial: ${partialText}`);
             hasPartialResult = true;
-          }
-
-          if (!englishResetDone) {
-            const livePartial = await this.voskManager.getLivePartial(recognizer);
-            const normalizedPartial = livePartial?.toLowerCase();
-            if (
-              normalizedPartial &&
-              MUSIC_VARIANTS.some((v) => normalizedPartial.includes(v))
-            ) {
-              englishResetDone = true;
-              englishRecognizer.reset();
-            }
           }
         });
       })
       .on("end", async () => {
         await processingQueue;
         const finalText = await this.voskManager.getFinalResult(recognizer);
-        const englishText = await this.voskManager.getFinalResult(englishRecognizer);
+        recognizer.free();
+        this.activeSpeakers.delete(userId);
 
-        if (finalText) {
-          if (matchesWakeWord(finalText)) {
-            logger.info(`✅ Final transcription: ${finalText}`);
-            await this.processVoiceCommand(finalText, userId, englishText);
-          } else {
-            logger.debug(`🔇 Ignored (no wake word): ${finalText}`);
+        if (!finalText) {
+          if (!hasPartialResult) {
+            logger.debug("❌ No speech detected");
           }
-        } else if (!hasPartialResult) {
-          logger.debug("❌ No speech detected");
+          return;
         }
 
-        recognizer.free();
-        englishRecognizer.free();
-        this.activeSpeakers.delete(userId);
+        if (!matchesWakeWord(finalText)) {
+          logger.debug(`🔇 Ignored (no wake word): ${finalText}`);
+          return;
+        }
+
+        logger.info(`✅ Vosk (pre-filter): ${finalText}`);
+        const whisperText = await transcribeWithWhisper(
+          Buffer.concat(audioChunks),
+          config.vosk.sampleRate
+        );
+        const transcript = whisperText || finalText;
+        logger.info(`🤖 Whisper: ${transcript}`);
+
+        const command = await parseCommand(transcript);
+        logger.info({ command }, "🧠 Parsed command");
+        await this.executeCommand(command, userId);
       })
       .on("error", async (error) => {
         logger.error({ error }, "❌ Audio stream error");
         await processingQueue;
         recognizer.free();
-        englishRecognizer.free();
         this.activeSpeakers.delete(userId);
       });
   }
@@ -284,15 +279,9 @@ export class DiscordBot {
   }
 
   /**
-   * Process voice command starting with "simon"
+   * Executes the command extracted by the LLM from the Whisper transcript
    */
-  private async processVoiceCommand(
-    transcript: string,
-    userId: string,
-    englishTranscript: string | null
-  ): Promise<void> {
-    const lowercaseTranscript = transcript.toLowerCase();
-
+  private async executeCommand(command: ParsedCommand, userId: string): Promise<void> {
     try {
       const guild = this.client.guilds.cache.get(config.discord.guildId);
       if (!guild) {
@@ -300,65 +289,76 @@ export class DiscordBot {
         return;
       }
 
-      // Command switch
-      if (
-        lowercaseTranscript.includes("envoie") ||
-        lowercaseTranscript.includes("envoi")
-      ) {
-        await sendMessage(guild, transcript);
-      } else if (lowercaseTranscript.includes("stop")) {
-        this.musicQueue.clear();
-        this.audioPlayer.stop();
-        stopCurrentStream();
-        logger.info("🛑 Music stopped and queue cleared");
-        await sendCommandEmbed(guild, "stop", this.currentTrack, userId);
-      } else if (SKIP_VARIANTS.some((v) => lowercaseTranscript.includes(v))) {
-        if (this.audioPlayer.state.status === "idle") {
-          logger.info("⏭️ Nothing playing to skip");
-        } else {
+      switch (command.action) {
+        case "message":
+          await sendMessage(guild, command.query ?? "", command.channel);
+          break;
+
+        case "stop":
+          this.musicQueue.clear();
           this.audioPlayer.stop();
           stopCurrentStream();
-          logger.info("⏭️ Skipped current track");
-          await sendCommandEmbed(guild, "skip", this.currentTrack, userId);
-        }
-      } else if (PAUSE_VARIANTS.some((v) => lowercaseTranscript.includes(v))) {
-        if (this.audioPlayer.pause()) {
-          logger.info("⏸️ Music paused");
-          await sendCommandEmbed(guild, "pause", this.currentTrack, userId);
-        }
-      } else if (RESUME_VARIANTS.some((v) => lowercaseTranscript.includes(v))) {
-        if (this.audioPlayer.unpause()) {
-          logger.info("▶️ Music resumed");
-          await sendCommandEmbed(guild, "resume", this.currentTrack, userId);
-        }
-      } else if (MUSIC_VARIANTS.some((v) => lowercaseTranscript.includes(v))) {
-        const track = await resolveTrack(transcript, englishTranscript);
-        if (!track) return;
-        track.requestedBy = userId;
+          logger.info("🛑 Music stopped and queue cleared");
+          await sendCommandEmbed(guild, "stop", this.currentTrack, userId);
+          break;
 
-        if (this.audioPlayer.state.status === "idle") {
-          this.playTrack(track);
-          await sendMusicEmbed(guild, track, "playing");
-        } else {
-          this.musicQueue.enqueue(track);
-          const pending = this.musicQueue.getPending();
-          const upcomingPosition = pending.length;
-          const tracksAhead = pending.slice(0, -1);
-          const estimatedWaitSeconds =
-            this.getCurrentTrackRemainingSeconds() +
-            tracksAhead.reduce(
-              (sum, t) => sum + (t.duration ? parseDuration(t.duration) : 0),
-              0
-            );
+        case "skip":
+          if (this.audioPlayer.state.status === "idle") {
+            logger.info("⏭️ Nothing playing to skip");
+          } else {
+            this.audioPlayer.stop();
+            stopCurrentStream();
+            logger.info("⏭️ Skipped current track");
+            await sendCommandEmbed(guild, "skip", this.currentTrack, userId);
+          }
+          break;
 
-          logger.info(`➕ Added to queue: ${track.title} (position ${upcomingPosition})`);
-          await sendMusicEmbed(guild, track, "queued", {
-            upcomingPosition,
-            estimatedWaitSeconds,
-          });
+        case "pause":
+          if (this.audioPlayer.pause()) {
+            logger.info("⏸️ Music paused");
+            await sendCommandEmbed(guild, "pause", this.currentTrack, userId);
+          }
+          break;
+
+        case "resume":
+          if (this.audioPlayer.unpause()) {
+            logger.info("▶️ Music resumed");
+            await sendCommandEmbed(guild, "resume", this.currentTrack, userId);
+          }
+          break;
+
+        case "play": {
+          const track = await resolveTrack(command.query ?? "");
+          if (!track) return;
+          track.requestedBy = userId;
+
+          if (this.audioPlayer.state.status === "idle") {
+            this.playTrack(track);
+            await sendMusicEmbed(guild, track, "playing");
+          } else {
+            this.musicQueue.enqueue(track);
+            const pending = this.musicQueue.getPending();
+            const upcomingPosition = pending.length;
+            const tracksAhead = pending.slice(0, -1);
+            const estimatedWaitSeconds =
+              this.getCurrentTrackRemainingSeconds() +
+              tracksAhead.reduce(
+                (sum, t) => sum + (t.duration ? parseDuration(t.duration) : 0),
+                0
+              );
+
+            logger.info(`➕ Added to queue: ${track.title} (position ${upcomingPosition})`);
+            await sendMusicEmbed(guild, track, "queued", {
+              upcomingPosition,
+              estimatedWaitSeconds,
+            });
+          }
+          break;
         }
-      } else {
-        logger.debug("❓ No matching voice command found");
+
+        case "none":
+          logger.debug("❓ No matching voice command found");
+          break;
       }
     } catch (error) {
       logger.error({ error }, "❌ Error processing voice command");
