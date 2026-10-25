@@ -116,20 +116,44 @@ If `MUSIC_NOTIFICATION_CHANNEL_ID` is set, the bot posts an embed to that channe
 
 ## Q&A
 
-**Why a separate LLM to understand the command instead of regex/keywords?**
+<details>
+<summary>Why a separate LLM to understand the command instead of regex/keywords?</summary>
+<br>
+
 Spoken phrasing varies too much to enumerate: word order, verb choice ("mets"/"lance"/"joue"/"balance"...), filler words, and where the wake word falls in the sentence. A regex/keyword matcher would need an ever-growing list of patterns and still break on anything not anticipated, or on Whisper's minor transcription noise. The LLM generalizes from a handful of examples (see `src/llm/command-prompt.ts`) to phrasings it's never explicitly seen, at the cost of ~1-2s of extra latency.
+</details>
 
-**Why is the wake word in French when the bot understands English too?**
+<details>
+<summary>Why is the wake word in French when the bot understands English too?</summary>
+<br>
+
 The wake word only needs to be detected cheaply and reliably by Vosk's live streaming pre-filter — keeping it fixed to one language keeps that step small and fast (one Vosk model, one known set of mis-hearings to match against, e.g. "c'est mon", "si mon"). "Simon" was picked because it's the bot's name and a natural word to say in French. Only the *wake word* is fixed — everything said after it is free-form and multilingual, because that part is handled by Whisper (multilingual) and the LLM, not by Vosk. A second wake word in another language would mean running a second Vosk recognizer per utterance — exactly the FR/EN disambiguation problem a single multilingual Whisper model was chosen to avoid (see `whisper/README.md`).
+</details>
 
-**Why does Vosk run on CPU and not GPU?**
+<details>
+<summary>Why does Vosk run on CPU and not GPU?</summary>
+<br>
+
 Vosk's (Kaldi's) acoustic model is tiny next to Whisper's, and its decoding is a WFST graph search — sequential and branchy, not the dense matrix math GPUs are built for. It also runs continuously on small streaming chunks (effectively batch size 1), where kernel-launch/data-transfer overhead would outweigh any GPU speedup. On top of that, Vosk here is deliberately a cheap, low-stakes pre-filter (just "is the wake word plausibly in there?") — it's already fast enough on CPU and is never the bottleneck, so putting it on GPU would just add contention with Whisper and Ollama for no real benefit.
+</details>
 
-**How much VRAM does this use in total (Whisper + Ollama)?**
+<details>
+<summary>How much VRAM does this use in total (Whisper + Ollama)?</summary>
+<br>
+
 Measured on this project's own setup (RTX 3070, 8GB): the Ollama model (`Qwen2.5 0.5B Q8_0`) sits at ~616MB, kept loaded indefinitely (`OLLAMA_KEEP_ALIVE=-1`). Whisper isn't a server — `whisper-cli` loads the model, transcribes, and exits for every single command — so the `medium` model only adds its own footprint (~2.3GB, measured by polling `nvidia-smi` during a transcription) transiently, for the ~1-2s a command takes, then releases it. So steady-state usage is just Ollama's ~600MB, with short peaks to ~3GB while a command is actively being processed.
+</details>
 
-**Why does the Docker build recompile whisper.cpp every time instead of using a ready binary?**
+<details>
+<summary>Why does the Docker build recompile whisper.cpp every time instead of using a ready binary?</summary>
+<br>
+
 There's no portable binary to use: `whisper-cli` is linked against a specific CUDA toolkit version, GPU architecture, and glibc, so a binary built on one machine generally won't run on another (see `whisper/native/README.md`). Rather than ship something that only works on the exact machine it was built on, the Dockerfile compiles `whisper.cpp` fresh inside the image every time, against the image's own CUDA toolkit — so the result works on any machine that can run that image, as long as `CUDA_ARCH` matches the GPU (see [Docker](#docker)). It's cached after the first build, so this only costs time once.
+</details>
 
-**Would this work with an AMD or Intel GPU instead of NVIDIA?**
+<details>
+<summary>Would this work with an AMD or Intel GPU instead of NVIDIA?</summary>
+<br>
+
 Not as-is. The CUDA acceleration in both the Dockerfile and the manual build path is NVIDIA-specific (`GGML_CUDA`, the CUDA toolkit, `nvidia-container-toolkit` for Docker GPU passthrough). `whisper.cpp` does support other backends (Vulkan, ROCm for AMD, etc.), but none of that is wired up here — you'd need to rebuild `whisper.cpp` with the relevant backend flag instead of `-DGGML_CUDA=ON`, adjust `docker-compose.yml`'s GPU reservation (currently `driver: nvidia`), and Ollama would need the matching backend/driver on its own side too. Without any GPU backend, everything still works on CPU, just slower (see [Prerequisites](#prerequisites)).
+</details>
