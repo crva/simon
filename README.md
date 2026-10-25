@@ -6,6 +6,18 @@ A Discord bot that listens to a voice channel, and when it hears its wake word, 
 
 ⚠️ The wake word itself is French ("Simon"), but commands can be phrased however you'd naturally say them, in French or English — see [How it works](#how-it-works).
 
+## Table of contents
+
+- [Prerequisites](#prerequisites)
+- [Setup](#setup)
+- [Docker](#docker)
+- [Environment variables](#environment-variables)
+- [How it works](#how-it-works)
+- [Voice commands](#voice-commands)
+- [Local LLM (Ollama)](#local-llm-ollama)
+- [Notifications](#notifications)
+- [Q&A](#qa)
+
 ## Prerequisites
 
 - Node.js 22+
