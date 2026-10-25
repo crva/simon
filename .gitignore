@@ -143,6 +143,10 @@ vite.config.ts.timestamp-*
 vosk/models/*
 !vosk/models/README.md
 
+# Whisper (the model is ~465MB — over GitHub's hard 100MB-per-file push limit)
+whisper/models/*
+!whisper/models/README.md
+
 # Music Downloads
 music/*
 !music/README.md

@@ -1,3 +1,6 @@
+import * as os from "os";
+import * as path from "path";
+
 require("dotenv").config();
 
 export interface AppConfig {
@@ -8,7 +11,6 @@ export interface AppConfig {
   };
   vosk: {
     modelPath: string;
-    englishModelPath: string;
     sampleRate: number;
   };
   audio: {
@@ -17,6 +19,14 @@ export interface AppConfig {
   music: {
     cacheEnabled: boolean;
     notificationChannelId: string;
+  };
+  whisper: {
+    modelPath: string;
+    cudaLibPath: string;
+  };
+  llm: {
+    model: string;
+    baseUrl: string;
   };
 }
 
@@ -48,7 +58,6 @@ export const config: AppConfig = {
   },
   vosk: {
     modelPath: requireEnv("VOSK_MODEL_PATH"),
-    englishModelPath: requireEnv("VOSK_MODEL_PATH_EN"),
     sampleRate: parseIntEnv("SAMPLE_RATE", 16000),
   },
   audio: {
@@ -57,5 +66,13 @@ export const config: AppConfig = {
   music: {
     cacheEnabled: process.env.MUSIC_CACHE_ENABLED === "true",
     notificationChannelId: process.env.MUSIC_NOTIFICATION_CHANNEL_ID || "",
+  },
+  whisper: {
+    modelPath: process.env.WHISPER_MODEL_PATH || "./whisper/models/ggml-small.bin",
+    cudaLibPath: process.env.CUDA_LIB_PATH || path.join(os.homedir(), "cuda-toolkit", "lib64"),
+  },
+  llm: {
+    model: process.env.OLLAMA_MODEL || "hf.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q8_0",
+    baseUrl: process.env.OLLAMA_BASE_URL || "",
   },
 };

@@ -4,14 +4,12 @@ import { logger } from "../utils";
 
 export class VoskManager {
   private model: vosk.Model;
-  private englishModel: vosk.Model;
 
   constructor() {
     try {
       vosk.setLogLevel(-1);
       this.model = new vosk.Model(config.vosk.modelPath);
-      this.englishModel = new vosk.Model(config.vosk.englishModelPath);
-      logger.info("✅ Vosk models loaded successfully");
+      logger.info("✅ Vosk model loaded successfully");
     } catch (error) {
       logger.error({ error }, "❌ Failed to load Vosk model");
       throw error;
@@ -24,17 +22,6 @@ export class VoskManager {
   createRecognizer(): vosk.Recognizer {
     return new vosk.Recognizer({
       model: this.model,
-      sampleRate: config.vosk.sampleRate,
-    });
-  }
-
-  /**
-   * Creates a recognizer using the (small) English model, used to re-read
-   * song titles since the main French model mangles English words
-   */
-  createEnglishRecognizer(): vosk.Recognizer {
-    return new vosk.Recognizer({
-      model: this.englishModel,
       sampleRate: config.vosk.sampleRate,
     });
   }
@@ -91,6 +78,5 @@ export class VoskManager {
    */
   destroy(): void {
     this.model.free();
-    this.englishModel.free();
   }
 }
