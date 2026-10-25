@@ -62,6 +62,8 @@ Prefer to keep using your own host Ollama instead (e.g. you've already got other
 
 ## How it works
 
+![Simon's voice pipeline: capture & decode, Vosk pre-filter, Whisper transcription, local LLM understanding, execution, Discord confirmation](docs/pipeline.png)
+
 Speech recognition runs in two passes, trading off a cheap/fast model against an accurate/flexible one:
 
 1. **Capture**: the bot joins the voice channel and subscribes to each speaker's audio individually (per-user, so multiple people talking at once are each transcribed, not just the first).
