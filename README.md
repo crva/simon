@@ -1,5 +1,7 @@
 # simon
 
+> **Why "Simon"?** The name's origin means *"the one who listens."* Fitting, for a bot whose only job is to listen.
+
 A Discord bot that listens to a voice channel, and when it hears its wake word, transcribes the request and acts on it — playing/queuing music, sending messages, or controlling playback.
 
 ⚠️ The wake word itself is French ("Simon"), but commands can be phrased however you'd naturally say them, in French or English — see [How it works](#how-it-works).
